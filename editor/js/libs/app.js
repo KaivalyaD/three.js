@@ -1,4 +1,5 @@
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
 
 var APP = {
 
@@ -111,7 +112,11 @@ var APP = {
 					name: 'Global',
 					source: ''
 				},
-				OrbitControls
+				{
+					'OrbitControls': OrbitControls,
+					'FirstPersonControls': FirstPersonControls,
+					/* similarly, more can be added */
+				}
 			);
 
 			dispatch( events.init, arguments );
