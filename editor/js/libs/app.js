@@ -1,3 +1,5 @@
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
 var APP = {
 
 	Player: function () {
@@ -19,7 +21,10 @@ var APP = {
 		this.width = 500;
 		this.height = 500;
 
+		this.simpx_symbol_registry = new Map();
+
 		this.load = function ( json ) {
+			this.simpx_symbol_registry.clear();
 
 			var project = json.project;
 
@@ -40,10 +45,11 @@ var APP = {
 				pointerdown: [],
 				pointerup: [],
 				pointermove: [],
-				update: []
+				update: [],
+				simpx_register_exported_symbols: []
 			};
 
-			var scriptWrapParams = 'player,renderer,scene,camera';
+			var scriptWrapParams = 'player,renderer,scene,camera,simpx_import_symbol';
 			var scriptWrapResultObj = {};
 
 			for ( var eventKey in events ) {
@@ -72,7 +78,7 @@ var APP = {
 
 					var script = scripts[ i ];
 
-					var functions = ( new Function( scriptWrapParams, script.source + '\nreturn ' + scriptWrapResult + ';' ).bind( object ) )( this, renderer, scene, camera );
+					var functions = ( new Function( scriptWrapParams, script.source + '\nreturn ' + scriptWrapResult + ';' ).bind( object ) )( this, renderer, scene, camera, this.simpx_import_symbol.bind( this ) );
 
 					for ( var name in functions ) {
 
@@ -85,6 +91,12 @@ var APP = {
 
 						}
 
+						if ( 'simpx_register_exported_symbols' === name ) {
+
+							this.simpx_register_exported_symbols( object, script, functions[ name ]() )
+
+						}
+
 						events[ name ].push( functions[ name ].bind( object ) );
 
 					}
@@ -92,6 +104,15 @@ var APP = {
 				}
 
 			}
+
+			this.simpx_register_exported_symbols(
+				scene,
+				{ 
+					name: 'Global',
+					source: ''
+				},
+				OrbitControls
+			);
 
 			dispatch( events.init, arguments );
 
@@ -210,6 +231,59 @@ var APP = {
 			camera = undefined;
 			scene = undefined;
 
+		};
+
+		this.simpx_register_exported_symbols = function( object, script, exported_symbols ) {
+
+			/* TODO: for the same object, disallow same name for >1 scripts */
+		
+			if ( undefined === this.simpx_symbol_registry.get( object.name ) )
+				this.simpx_symbol_registry.set( object.name, new Set() );
+
+			const registry_entries = this.simpx_symbol_registry.get( object.name );
+			const simpx_new_registry_entry = {
+				object_uuid: object.uuid,
+				script_name: script.name,
+				exported_symbols: exported_symbols
+			}
+
+			registry_entries.add( simpx_new_registry_entry );
+		};
+
+		this.simpx_import_symbol = function( script_path, symbol ) {
+
+			let components = script_path.split( '/' );
+			let resolved_object_name = components[ components.length - 2 ];
+			
+			if( !this.simpx_symbol_registry.has( resolved_object_name ) )
+				throw new Error(
+					`App.Player: no exported symbol was found for object '${ resolved_object_name }'`
+				);
+
+			const script_entries = this.simpx_symbol_registry.get( resolved_object_name );
+			const script_entry_iterator = script_entries.values();
+			let script_entry;
+
+			let script_was_found = false;
+			let resolved_script_name = components[ components.length - 1 ];
+			for ( let entry = script_entry_iterator.next().value; entry ; entry = script_entry_iterator.next().value ) {
+				if ( resolved_script_name === entry.script_name ) {
+					script_was_found = true;
+					script_entry = entry;
+					break;
+				}
+			}
+			if ( !script_was_found )
+				throw new Error(
+					`App.Player: script '${ resolved_script_name }' does not exist for object ${ resolved_object_name }`
+				);
+			
+			if( symbol && !script_entry.exported_symbols.hasOwnProperty( symbol ) )
+				throw new Error(
+					`App.Player: script '${ script_path }' does not export symbol ${ symbol }`
+				);
+			
+			return symbol ? script_entry.exported_symbols[ symbol ] : script_entry.exported_symbols;
 		};
 
 		//
