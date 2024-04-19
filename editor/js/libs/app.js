@@ -1,5 +1,9 @@
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GlitchPass } from 'three/addons/postprocessing/GlitchPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 var APP = {
 
@@ -7,6 +11,8 @@ var APP = {
 
 		var renderer = new THREE.WebGLRenderer( { antialias: true } );
 		renderer.setPixelRatio( window.devicePixelRatio ); // TODO: Use player.setPixelRatio()
+
+		var composer = undefined;
 
 		var loader = new THREE.ObjectLoader();
 		var camera, scene;
@@ -50,7 +56,7 @@ var APP = {
 				simpx_register_exported_symbols: []
 			};
 
-			var scriptWrapParams = 'player,renderer,scene,camera,simpx_import_symbol';
+			var scriptWrapParams = 'player,renderer,composer,scene,camera,simpx_import_symbols';
 			var scriptWrapResultObj = {};
 
 			for ( var eventKey in events ) {
@@ -79,7 +85,7 @@ var APP = {
 
 					var script = scripts[ i ];
 
-					var functions = ( new Function( scriptWrapParams, script.source + '\nreturn ' + scriptWrapResult + ';' ).bind( object ) )( this, renderer, scene, camera, this.simpx_import_symbol.bind( this ) );
+					var functions = ( new Function( scriptWrapParams, script.source + '\nreturn ' + scriptWrapResult + ';' ).bind( object ) )( this, renderer, composer, scene, camera, this.simpx_import_symbols.bind( this ) );
 
 					for ( var name in functions ) {
 
@@ -115,6 +121,10 @@ var APP = {
 				{
 					'OrbitControls': OrbitControls,
 					'FirstPersonControls': FirstPersonControls,
+					'EffectComposer': EffectComposer,
+					'RenderPass': RenderPass,
+					'GlitchPass': GlitchPass,
+					'OutputPass': OutputPass,
 					/* similarly, more can be added */
 				}
 			);
@@ -185,7 +195,10 @@ var APP = {
 
 			}
 
-			renderer.render( scene, camera );
+			if( !composer )
+				renderer.render( scene, camera );
+			else
+				composer.render();
 
 			prevTime = time;
 
@@ -225,13 +238,18 @@ var APP = {
 
 			dispatch( events.update, { time: time * 1000, delta: 0 /* TODO */ } );
 
-			renderer.render( scene, camera );
-
+			if( !composer )
+				renderer.render( scene, camera );
+			else
+				composer.render();
 		};
 
 		this.dispose = function () {
 
-			renderer.dispose();
+			if( composer )
+				composer.dispose();
+			if( renderer )
+				renderer.dispose();
 
 			camera = undefined;
 			scene = undefined;
@@ -255,7 +273,7 @@ var APP = {
 			registry_entries.add( simpx_new_registry_entry );
 		};
 
-		this.simpx_import_symbol = function( script_path, symbol ) {
+		this.simpx_import_symbols = function( script_path, symbol ) {
 
 			let components = script_path.split( '/' );
 			let resolved_object_name = components[ components.length - 2 ];
